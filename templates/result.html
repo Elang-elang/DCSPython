@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hasil Klasifikasi</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Hasil Klasifikasi Dokumen</h1>
+        
+        {% if source == 'upload' %}
+        <p class="source-info">📁 Hasil dari file yang diupload</p>
+        {% else %}
+        <p class="source-info">📷 Hasil dari kamera real-time</p>
+        {% endif %}
+        
+        <div class="result-section">
+            <h2>Prediksi Kategori</h2>
+            <div class="prediction-result">
+                <span class="category">{{ category }}</span>
+                <span class="confidence">Confidence: {{ "%.2f"|format(confidence * 100) }}%</span>
+            </div>
+        </div>
+        
+        <div class="result-section">
+            <h2>Teks Asli (OCR)</h2>
+            <div class="text-box original-text">
+                {{ original_text }}
+            </div>
+        </div>
+        
+        <div class="result-section">
+            <h2>Teks Setelah Preprocessing</h2>
+            <div class="text-box processed-text">
+                {{ processed_text }}
+            </div>
+        </div>
+        
+        <div class="actions">
+            <a href="{{ url_for('index') }}" class="btn-back">Upload Gambar Lain</a>
+            <a href="{{ url_for('camera') }}" class="btn-camera">Gunakan Kamera</a>
+        </div>
+    </div>
+</body>
+</html>

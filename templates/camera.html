@@ -1,0 +1,256 @@
+!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kamera Real-time OCR & QR Code</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Deteksi Teks & QR Code Real-time</h1>
+        <p>Arahkan kamera ke dokumen atau QR code. Deteksi akan dilakukan setiap 5 detik sekali.</p>
+        
+        <div class="mode-selector">
+            <button id="normalModeBtn" class="mode-btn active">Mode Normal</button>
+            <button id="qrModeBtn" class="mode-btn">Mode QR Stream</button>
+        </div>
+        
+        <div id="normalMode" class="camera-section">
+            <div class="camera-wrapper">
+                <video id="video" width="640" height="480" autoplay></video>
+                <canvas id="canvas" width="640" height="480" style="display: none;"></canvas>
+            </div>
+            
+            <div class="camera-controls">
+                <button id="startButton" class="btn-camera">Mulai Kamera</button>
+                <button id="stopButton" class="btn-camera" style="display: none;">Stop Kamera</button>
+                <button id="processButton" class="btn-process" style="display: none;">Proses Sekarang</button>
+            </div>
+            
+            <div id="status" class="status-box">
+                <span class="status-text">Kamera belum aktif</span>
+                <div class="countdown" id="countdown" style="display: none;"></div>
+            </div>
+        </div>
+        
+        <div id="qrMode" class="camera-section" style="display: none;">
+            <div class="camera-wrapper">
+                <img id="qrStream" src="/qr_feed" style="max-width: 100%; height: auto;" />
+            </div>
+            <div class="qr-info">
+                <p>Mode streaming untuk deteksi QR code real-time dengan overlay visual.</p>
+            </div>
+        </div>
+        
+        <div id="results" class="results-section" style="display: none;">
+            <h2>Hasil Deteksi</h2>
+            <div class="prediction-result">
+                <span id="categoryResult" class="category"></span>
+                <span id="confidenceResult" class="confidence"></span>
+                <span id="qrIndicator" class="qr-indicator" style="display: none;">🔍 QR Code Detected</span>
+            </div>
+            
+            <div class="result-section">
+                <h3>Data yang Terdeteksi</h3>
+                <div id="originalText" class="text-box original-text"></div>
+            </div>
+            
+            <div class="result-section">
+                <h3>Data Setelah Preprocessing</h3>
+                <div id="processedText" class="text-box processed-text"></div>
+            </div>
+        </div>
+        
+        <div class="actions">
+            <a href="{{ url_for('index') }}" class="btn-back">Kembali ke Upload</a>
+        </div>
+    </div>
+
+    <script>
+        let video = document.getElementById('video');
+        let canvas = document.getElementById('canvas');
+        let context = canvas.getContext('2d');
+        let stream = null;
+        let processInterval = null;
+        let countdownInterval = null;
+        let nextProcessTime = 0;
+        let isProcessing = false;
+
+        // Mode switching
+        document.getElementById('normalModeBtn').addEventListener('click', function() {
+            switchMode('normal');
+        });
+
+        document.getElementById('qrModeBtn').addEventListener('click', function() {
+            switchMode('qr');
+        });
+
+        function switchMode(mode) {
+            if (mode === 'normal') {
+                document.getElementById('normalModeBtn').classList.add('active');
+                document.getElementById('qrModeBtn').classList.remove('active');
+                document.getElementById('normalMode').style.display = 'block';
+                document.getElementById('qrMode').style.display = 'none';
+                
+                // Stop QR stream
+                document.getElementById('qrStream').src = '';
+            } else {
+                document.getElementById('qrModeBtn').classList.add('active');
+                document.getElementById('normalModeBtn').classList.remove('active');
+                document.getElementById('qrMode').style.display = 'block';
+                document.getElementById('normalMode').style.display = 'none';
+                
+                // Stop normal camera
+                stopCamera();
+                
+                // Start QR stream
+                document.getElementById('qrStream').src = '/qr_feed';
+            }
+        }
+
+        document.getElementById('startButton').addEventListener('click', startCamera);
+        document.getElementById('stopButton').addEventListener('click', stopCamera);
+        document.getElementById('processButton').addEventListener('click', processFrame);
+
+        async function startCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: 640, 
+                        height: 480,
+                        facingMode: 'environment' // Gunakan kamera belakang jika tersedia
+                    } 
+                });
+                video.srcObject = stream;
+                
+                document.getElementById('startButton').style.display = 'none';
+                document.getElementById('stopButton').style.display = 'inline-block';
+                document.getElementById('processButton').style.display = 'inline-block';
+                
+                updateStatus('Kamera aktif. Deteksi teks/QR code otomatis...', 'success');
+                
+                // Mulai timer untuk proses otomatis
+                nextProcessTime = Date.now() + 5000; // 5 detik dari sekarang
+                startCountdown();
+                
+                // Auto process setiap 5 detik
+                processInterval = setInterval(() => {
+                    if (!isProcessing) {
+                        processFrame();
+                        nextProcessTime = Date.now() + 5000;
+                    }
+                }, 5000);
+                
+            } catch (err) {
+                console.error('Error accessing camera:', err);
+                updateStatus('Error: Tidak dapat mengakses kamera', 'error');
+            }
+        }
+
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            
+            if (processInterval) {
+                clearInterval(processInterval);
+                processInterval = null;
+            }
+            
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+            }
+            
+            document.getElementById('startButton').style.display = 'inline-block';
+            document.getElementById('stopButton').style.display = 'none';
+            document.getElementById('processButton').style.display = 'none';
+            document.getElementById('countdown').style.display = 'none';
+            
+            updateStatus('Kamera tidak aktif', 'default');
+        }
+
+        function startCountdown() {
+            document.getElementById('countdown').style.display = 'block';
+            
+            countdownInterval = setInterval(() => {
+                const timeLeft = Math.max(0, Math.ceil((nextProcessTime - Date.now()) / 1000));
+                document.getElementById('countdown').textContent = `Deteksi berikutnya dalam: ${timeLeft}s`;
+                
+                if (timeLeft <= 0 && !isProcessing) {
+                    document.getElementById('countdown').textContent = 'Memproses...';
+                }
+            }, 100);
+        }
+
+        async function processFrame() {
+            if (isProcessing) return;
+            
+            isProcessing = true;
+            updateStatus('Memproses frame...', 'processing');
+            
+            // Capture frame
+            context.drawImage(video, 0, 0, 640, 480);
+            let imageData = canvas.toDataURL('image/jpeg', 0.8);
+            
+            try {
+                const response = await fetch('/process_camera_frame', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ image: imageData })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    displayResults(result);
+                    if (result.qr_detected) {
+                        updateStatus(`QR Code terdeteksi! ${result.qr_count} QR ditemukan`, 'success');
+                    } else {
+                        updateStatus(`Terdeteksi: ${result.category} (${result.confidence}%)`, 'success');
+                    }
+                } else {
+                    updateStatus(result.message, 'warning');
+                    document.getElementById('results').style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Error processing frame:', error);
+                updateStatus('Error: Gagal memproses frame', 'error');
+            }
+            
+            isProcessing = false;
+        }
+
+        function displayResults(result) {
+            document.getElementById('categoryResult').textContent = result.category;
+            document.getElementById('confidenceResult').textContent = `Confidence: ${result.confidence}%`;
+            document.getElementById('originalText').textContent = result.original_text;
+            document.getElementById('processedText').textContent = result.processed_text;
+            
+            // Show QR indicator if QR code detected
+            if (result.qr_detected) {
+                document.getElementById('qrIndicator').style.display = 'inline-block';
+            } else {
+                document.getElementById('qrIndicator').style.display = 'none';
+            }
+            
+            document.getElementById('results').style.display = 'block';
+        }
+
+        function updateStatus(message, type) {
+            const statusElement = document.getElementById('status');
+            const statusText = statusElement.querySelector('.status-text');
+            
+            statusText.textContent = message;
+            statusElement.className = `status-box ${type}`;
+        }
+
+        // Cleanup saat halaman ditutup
+        window.addEventListener('beforeunload', stopCamera);
+    </script>
+</body>
+</html>
