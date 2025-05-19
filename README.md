@@ -13,7 +13,7 @@ A Flask-based web application that classifies documents (ID cards, letters, rece
 ## 📂 Directory Structure
 
 ```
-.
+DCSPython
 ├── app.py                 # Main Flask application
 ├── calibrate_stability.py # Camera stability calibration tool
 ├── generate_qr.py         # QR code generator for testing
@@ -32,8 +32,8 @@ A Flask-based web application that classifies documents (ID cards, letters, rece
 
 1. Clone the repository:
    ```bash
-   git clone [your-repository-url-here]
-   cd [repository-name]
+   git clone https://github.com/Elang-elang/DCSPython.git
+   cd DCSPython
    ```
 
 2. Install dependencies:
